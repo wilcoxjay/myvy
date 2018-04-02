@@ -11,6 +11,7 @@ Note that UPDR is currently not working properly. BMC and inductive checking sho
 Documentation:
 
 - There is some basic documentation for using myvy in `leader-election.rkt`.
+  Be sure to read the instructions near the bottom on how to tell myvy where Z3 is installed.
 - The solver interface is also lightly documented in `solver.rkt`
 - The internals of myvy are not yet documented.
 

@@ -136,6 +136,14 @@
 ; I usually use myvy by loading this file in the REPL
 ; and then executing one of the following lines.
 
+; You need to edit this line in myvy.rkt to point to your z3 binary
+; (around line 517 at time of writing)
+;
+;     (parameterize ([z3 "/Users/jrw12/local/bin/z3"])
+;       (solver-init))
+;
+
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; BMC corollary (safety property) at-most-one-leader to depth 5 (ie, 5 transitions, so 6 states).
