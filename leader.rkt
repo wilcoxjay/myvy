@@ -76,59 +76,59 @@
                                      (= N1 n)))))))
 
    (transition receive-request-vote
-    (modifies (voted vote-msg)
-              (exists ((n node) (sender node))
-                      (and (not (old (voted n)))
-                           (old (request-vote-msg sender n))
-                           (forall ((N node))
-                                   (= (voted N)
-                                      (or (old (voted N))
-                                          (= N n))))
-                           (forall ((N1 node) (N2 node))
-                                   (= (vote-msg N1 N2)
-                                      (or (old (vote-msg N1 N2))
-                                          (and (= N1 n)
-                                               (= N2 sender)))))))))
+     (modifies (voted vote-msg)
+       (exists ((n node) (sender node))
+         (and (not (old (voted n)))
+              (old (request-vote-msg sender n))
+              (forall ((N node))
+                (= (voted N)
+                   (or (old (voted N))
+                       (= N n))))
+              (forall ((N1 node) (N2 node))
+                (= (vote-msg N1 N2)
+                   (or (old (vote-msg N1 N2))
+                       (and (= N1 n)
+                            (= N2 sender)))))))))
 
    (transition receive-vote
-    (modifies (votes)
-              (exists ((n node) (sender node))
-                      (and (old (vote-msg sender n))
-                           (forall ((N1 node) (N2 node))
-                                   (= (votes N1 N2)
-                                      (or (old (votes N1 N2))
-                                          (and (= N1 n)
-                                               (= N2 sender)))))))))
+     (modifies (votes)
+       (exists ((n node) (sender node))
+         (and (old (vote-msg sender n))
+              (forall ((N1 node) (N2 node))
+                (= (votes N1 N2)
+                   (or (old (votes N1 N2))
+                       (and (= N1 n)
+                            (= N2 sender)))))))))
 
    (corollary at-most-one-leader
-    (forall ((N1 node) (N2 node))
-            (=> (and (leader N1) (leader N2))
-                (= N1 N2))))
+     (forall ((N1 node) (N2 node))
+       (=> (and (leader N1) (leader N2))
+           (= N1 N2))))
 
    (invariant at-most-one-votes
-    (forall ((C1 node) (C2 node) (V node))
-            (=> (and (votes C1 V) (votes C2 V))
-                (= C1 C2))))
- 
+       (forall ((C1 node) (C2 node) (V node))
+         (=> (and (votes C1 V) (votes C2 V))
+             (= C1 C2))))
+
    (invariant leader-has-quorum
-    (forall ((L node))
-            (=> (leader L)
-                (forall ((V node))
-                        (=> (member V voting-quorum)
-                            (votes L V))))))
- 
+       (forall ((L node))
+         (=> (leader L)
+             (forall ((V node))
+               (=> (member V voting-quorum)
+                   (votes L V))))))
+
    (invariant votes-were-received
-    (forall ((C node) (V node))
-            (=> (votes C V) (vote-msg V C))))
- 
+       (forall ((C node) (V node))
+         (=> (votes C V) (vote-msg V C))))
+
    (invariant at-most-one-vote-msg
-    (forall ((C1 node) (C2 node) (V node))
-            (=> (and (vote-msg V C1) (vote-msg V C2))
-                (= C1 C2))))
- 
+       (forall ((C1 node) (C2 node) (V node))
+         (=> (and (vote-msg V C1) (vote-msg V C2))
+             (= C1 C2))))
+
    (invariant vote-msg-voted
-    (forall ((C node) (V node))
-            (=> (vote-msg V C) (voted V))))
+       (forall ((C node) (V node))
+         (=> (vote-msg V C) (voted V))))
 
    ))
 
