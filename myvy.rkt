@@ -600,11 +600,11 @@
 
 (define (myvy-verify decls)
   (myvy-init decls)
-  (or
-   (myvy-check-init-invariants decls)
-   (myvy-check-transitions-preserve-invariants decls)
-   (myvy-check-corollaries decls))
-  (void))
+  (not
+   (or
+    (myvy-check-init-invariants decls)
+    (myvy-check-transitions-preserve-invariants decls)
+    (myvy-check-corollaries decls))))
 
 (define (myvy-updr-frame-to-formula f)
   (solver-and* f))
@@ -1049,11 +1049,16 @@
     (match (myvy-updr-check-frontier decls bad fs)
       ['unsat
        (printf "frontier is safe.\n")
-       (if (check-frame-implies decls (first fs) (second fs))
-           (list 'valid (first fs))
-           (begin
-             (printf "moving to new frame\n")
-             (go (myvy-updr-push-forward-all decls (cons (list 'true) fs)))))]
+       (printf "moving to new frame\n")
+       (set! fs (myvy-updr-push-forward-all decls (cons (list 'true) fs)))
+       (set! fs (myvy-updr-simplify-frames decls fs))
+       (define I (for/or ([next fs]
+                          [prev (rest fs)]
+                          #:when (check-frame-implies decls next prev))
+                   prev))
+       (if I
+           (list 'valid I)
+           (go fs))]
       ['sat
        (printf "frontier is not safe, blocking minimal model\n")
        (let* ([model (myvy-get-minimal-model decls)]
