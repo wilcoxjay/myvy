@@ -10,6 +10,8 @@
 (struct mutrel-decl (name sorts) #:transparent)
 (struct immconst-decl (name sort) #:transparent)
 (struct mutconst-decl (name sort) #:transparent)
+(struct immfun-decl (name sorts sort) #:transparent)
+(struct mutfun-decl (name sorts sort) #:transparent)
 (struct axiom-decl (name formula) #:transparent)
 (struct init-decl (name formula) #:transparent)
 (struct transition-decl (name formula) #:transparent)
@@ -25,6 +27,9 @@
     [(mutrel-decl R _) R]
     [(immconst-decl C _) C]
     [(mutconst-decl C _) C]
+    [(immfun-decl F _ _) F]
+    [(mutfun-decl F _ _) F]
+
     ; the ones below here are kinda bogus
     [(axiom-decl name _) name]
     [(init-decl name _) name]
@@ -38,6 +43,17 @@
 (define-syntax-rule (mutable-relation R (args ...)) (mutrel-decl 'R '(args ...)))
 (define-syntax-rule (immutable-constant C t) (immconst-decl 'C 't))
 (define-syntax-rule (mutable-constant C t) (mutconst-decl 'C 't))
+(define-syntax-rule (immutable-function F (args ...) t)
+  (begin
+    (when (null? '(args ...))
+      (error "functions must take at least one argument; consider using a constant instead"))
+    (immfun-decl 'F '(args ...)'t)))
+(define-syntax-rule (mutable-function F (args ...) t)
+  (begin
+    (when (null? '(args ...))
+      (error "functions must take at least one argument; consider using a constant instead"))
+    (mutfun-decl 'F '(args ...) 't)))
+
 (define-syntax axiom
   (syntax-rules ()
     [(axiom f) (axiom-decl (symbol-append 'anonymous- (gensym)) 'f)]
@@ -109,8 +125,15 @@
       [(immrel-decl R sorts) (solver-declare-fun R sorts 'Bool)]
       [(immconst-decl C sort)
        (solver-declare-const C sort)
-       (let ([x (gensym)])
+       #;(let ([x (gensym)])
          (solver-assert `(exists ((,x ,sort)) (= ,x ,C))))]
+      [(immfun-decl F sorts sort)
+       (solver-declare-fun F sorts sort)
+       #;(let ([bvs (map (λ (s) (list (gensym) s)) sorts)]
+             [y (list (gensym) sort)])
+         (solver-assert `(forall ,bvs
+                           (exists (,y)
+                             (= (,F ,@(map car bvs)) ,(car y))))))]
 
       [(axiom-decl name f)
        (solver-assert #:label (symbol-append 'axiom- name) f)]
@@ -123,8 +146,15 @@
       [(mutrel-decl R sorts) (solver-declare-fun (mangle R) sorts 'Bool)]
       [(mutconst-decl C sort)
        (solver-declare-const (mangle C) sort)
-       (let ([x (gensym)])
+       #;(let ([x (gensym)])
          (solver-assert `(exists ((,x ,sort)) (= ,x ,(mangle C)))))]
+      [(mutfun-decl F sorts sort)
+       (solver-declare-fun (mangle F) sorts sort)
+       #;(let ([bvs (map (λ (s) (list (gensym) s)) sorts)]
+             [y (list (gensym) sort)])
+         (solver-assert `(forall ,bvs
+                           (exists (,y)
+                             (= (,(mangle F) ,@(map car bvs)) ,(car y))))))]
       [_ (void)])))
 
 (define (myvy-declare-mutable-signature decls)
@@ -142,6 +172,7 @@
     (match decl
       [(mutrel-decl R _) (equal? sym R)]
       [(mutconst-decl C _) (equal? sym C)]
+      [(mutfun-decl F _ _) (equal? sym F)]
       [_ false])))
 
 (define (myvy-mangle-formula-one-state decls mangle f)
@@ -298,6 +329,14 @@
         [(mutconst-decl name sort) #:when (not (member name mods))
          (list (solver-label #:label (symbol-append 'frame- nonce '- name)
                              `(= ,(mangle-old name) ,(mangle-new name))))]
+        [(mutfun-decl name sorts sort) #:when (not (member name mods))
+         (let ([bounds (map (λ (s) (list (gensym) s)) sorts)])
+           (list (solver-label
+                  #:label (symbol-append 'frame- nonce '- name)
+                  `(forall ,bounds
+                     (= (,(mangle-old name) ,@(map car bounds))
+                        (,(mangle-new name) ,@(map car bounds)))))))]
+
         [_ null])))))
 
 (define (myvy-desugar-transition-relation decls mangle-old mangle-new name formula)
@@ -323,6 +362,14 @@
               (if (defined-in-model model (mangle R))
                   (eval (cons (mangle R) tuple))
                   #f)))))
+
+(define (enumerate-function eval model elt-map #:mangle [mangle (λ (x) x)] F sorts sort)
+  (for/list ([tuple (apply cartesian-product (map (λ (s) (hash-ref elt-map s)) sorts))])
+    (list (cons F tuple)
+            (if (defined-in-model model (mangle F))
+                (eval (cons (mangle F) tuple))
+                (first (hash-ref elt-map sort))))))
+
 
 (define/match (myvy-expr-to-racket expr)
   [(`(ite ,args ...)) `(if ,@(map myvy-expr-to-racket args))]
@@ -404,6 +451,10 @@
         (list (enumerate-constant eval model elt-map C sort))]
        [(mutconst-decl C sort)
         (list (enumerate-constant eval model elt-map #:mangle mangle C sort))]
+       [(immfun-decl F sorts sort)
+        (list (enumerate-function eval model elt-map F sorts sort))]
+       [(mutfun-decl F sorts sort)
+        (list (enumerate-function eval model elt-map #:mangle mangle F sorts sort))]
        [_ null]))))
 
 (define (myvy-enumerate-model-two-state decls model
@@ -426,6 +477,12 @@
         (list
          (enumerate-constant eval model elt-map (myvy-mangle-old C) sort)
          (enumerate-constant eval model elt-map (myvy-mangle-new C) sort))]
+       [(immfun-decl F sorts sort)
+        (list (enumerate-function eval model elt-map F sorts sort))]
+       [(mutfun-decl F sorts sort)
+        (list
+         (enumerate-function eval model elt-map (myvy-mangle-old F) sorts sort)
+         (enumerate-function eval model elt-map (myvy-mangle-new F) sorts sort))]
        [_ null]))))
 
 (define (myvy-enumerate-the-model-two-state #:only [the-thing null])
@@ -505,9 +562,11 @@
          [_
           (for/list ([clause sym-enum])
             (match clause
-              [`((,R ,args ...) ,flag)
+              [`((,R ,args ...) ,value)
                (let ([atom `(,R ,@(map rename args))])
-                 (if flag atom (solver-not atom)))]))]))))
+                 (if (boolean? value)
+                     (if value atom (solver-not atom))
+                     `(= ,atom ,(rename value))))]))]))))
 
   (define (wrap cs)
     (match cs
@@ -928,7 +987,8 @@
   (myvy-declare-mutable-signature decls)
   (begin0
       (myvy-simplify-all-in-context '() f)
-    (solver-pop)))
+    (solver-pop)
+    (printf "done simplifying")))
 
 (define (myvy-updr-simplify-frames decls fs)
   (printf "simplifying frames\n")
@@ -937,7 +997,8 @@
   (begin0
       (for/list ([f fs])
         (myvy-simplify-all-in-context '() f))
-    (solver-pop)))
+    (solver-pop)
+    (printf "done simplifying")))
 
 (define (check-frame-implies decls hyps goals)
   (solver-push)
