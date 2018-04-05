@@ -416,16 +416,16 @@
               #:when (or (null? the-thing) (equal? the-thing (decl-name decl))))
      (match decl
        [(immrel-decl R sorts)
-        (list (enumerate-relation eval elt-map R sorts))]
+        (list (enumerate-relation eval model elt-map R sorts))]
        [(mutrel-decl R sorts)
-        (list (enumerate-relation eval elt-map (myvy-mangle-old R) sorts)
-              (enumerate-relation eval elt-map (myvy-mangle-new R) sorts))]
+        (list (enumerate-relation eval model elt-map (myvy-mangle-old R) sorts)
+              (enumerate-relation eval model elt-map (myvy-mangle-new R) sorts))]
        [(immconst-decl C sort)
-        (list (list C (eval C)))]
+        (list (enumerate-constant eval model elt-map C sort))]
        [(mutconst-decl C sort)
         (list
-         (list (myvy-mangle-old C) (eval (myvy-mangle-old C)))
-         (list (myvy-mangle-new C) (eval (myvy-mangle-new C))))]
+         (enumerate-constant eval model elt-map (myvy-mangle-old C) sort)
+         (enumerate-constant eval model elt-map (myvy-mangle-new C) sort))]
        [_ null]))))
 
 (define (myvy-enumerate-the-model-two-state #:only [the-thing null])
