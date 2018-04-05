@@ -351,9 +351,9 @@
         (equal? name nm)]
        [_ false]))])
 
-(define the-racket-model null)
-(define the-racket-model-decls null)
-(define the-racket-model-z3-model null)
+(define the-racket-model (void))
+(define the-racket-model-decls (void))
+(define the-racket-model-z3-model (void))
 
 (define (myvy-make-evaluator-for-model racket-model)
   (define e (make-evaluator 'racket/base #:allow-for-load '("/")))
@@ -518,6 +518,11 @@
   `(exists ,vars ,(wrap (append distinct atomic))))
 
 (define (myvy-init decls)
+  (set! the-racket-model null)
+  (set! the-racket-model-decls null)
+  (set! the-racket-model-z3-model null)
+  (set! inductive-frame null)
+
   (parameterize ([z3 "/Users/jrw12/local/bin/z3"])
     (solver-init))
   (solver-set-option ':auto-config 'false)
@@ -827,7 +832,7 @@
     (pretty-print ans)
   ans)
 
-(define inductive-frame null)
+(define inductive-frame (void))
 
 (define (myvy-updr-block-diagram decls bad fs diag model enum j)
   (printf "updr blocking diagram in frame ~a\n" j)
