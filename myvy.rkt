@@ -311,9 +311,12 @@
 (define (myvy-assert-transition-relation decls mangle-old mangle-new name formula)
   (solver-assert (myvy-desugar-transition-relation decls mangle-old mangle-new name formula)))
 
-(define (enumerate-relation eval elt-map #:mangle [mangle (λ (x) x)] R sorts)
+(define (enumerate-relation eval model elt-map #:mangle [mangle (λ (x) x)] R sorts)
   (for/list ([tuple (apply cartesian-product (map (λ (s) (hash-ref elt-map s)) sorts))])
-      (list (cons R tuple) (eval (cons (mangle R) tuple)))))
+    (list (cons R tuple)
+          (if (defined-in-model model (mangle R))
+              (eval (cons (mangle R) tuple))
+              #f))))
 
 (define/match (myvy-expr-to-racket expr)
   [(`(ite ,args ...)) `(if ,@(map myvy-expr-to-racket args))]
@@ -373,6 +376,11 @@
     (values sort (model-get-elements-of-sort model sort))))
 
 
+(define (enumerate-constant eval model elt-map #:mangle [mangle (λ (x) x)] C sort)
+  (if (defined-in-model model (mangle C))
+      (list C (eval (mangle C)))
+      (list C (first (hash-ref elt-map sort)))))
+
 (define (myvy-enumerate-model-one-state decls mangle model
                                         #:only [the-thing null])
 
@@ -380,18 +388,16 @@
   (define eval (myvy-make-evaluator-for-model (myvy-model-to-racket model)))
   (apply append
    (for/list ([decl decls]
-              #:when (and (or (null? the-thing) (equal? the-thing (decl-name decl)))
-                          (or (defined-in-model model (mangle (decl-name decl)))
-                              (defined-in-model model (decl-name decl)))))
+              #:when (or (null? the-thing) (equal? the-thing (decl-name decl))))
      (match decl
        [(immrel-decl R sorts)
-        (list (enumerate-relation eval elt-map R sorts))]
+        (list (enumerate-relation eval model elt-map R sorts))]
        [(mutrel-decl R sorts)
-        (list (enumerate-relation eval elt-map #:mangle mangle R sorts))]
+        (list (enumerate-relation eval model elt-map #:mangle mangle R sorts))]
        [(immconst-decl C sort)
-        (list (list C (eval C)))]
+        (list (enumerate-constant eval model elt-map C sort))]
        [(mutconst-decl C sort)
-        (list (list C (eval (mangle C))))]
+        (list (enumerate-constant eval model elt-map #:mangle mangle C sort))]
        [_ null]))))
 
 (define (myvy-enumerate-model-two-state decls model
@@ -401,29 +407,19 @@
   (define eval (myvy-make-evaluator-for-model (myvy-model-to-racket model)))
   (apply append
    (for/list ([decl decls]
-              #:when (and (or (null? the-thing) (equal? the-thing (decl-name decl)))
-                          (or (defined-in-model model (decl-name decl))
-                              (defined-in-model model (myvy-mangle-old (decl-name decl)))
-                              (defined-in-model model (myvy-mangle-new (decl-name decl))))))
+              #:when (or (null? the-thing) (equal? the-thing (decl-name decl))))
      (match decl
        [(immrel-decl R sorts)
         (list (enumerate-relation eval elt-map R sorts))]
        [(mutrel-decl R sorts)
-        (define ans null)
-        (when (defined-in-model model (myvy-mangle-old R))
-          (set! ans (cons (enumerate-relation eval elt-map (myvy-mangle-old R) sorts) ans)))
-        (when (defined-in-model model (myvy-mangle-new R))
-          (set! ans (cons (enumerate-relation eval elt-map (myvy-mangle-new R) sorts) ans)))
-        ans]
+        (list (enumerate-relation eval elt-map (myvy-mangle-old R) sorts)
+              (enumerate-relation eval elt-map (myvy-mangle-new R) sorts))]
        [(immconst-decl C sort)
         (list (list C (eval C)))]
        [(mutconst-decl C sort)
-        (define ans null)
-        (when (defined-in-model model (myvy-mangle-old C))
-          (set! ans (cons (list (myvy-mangle-old C) (eval (myvy-mangle-old C))) ans)))
-        (when (defined-in-model model (myvy-mangle-new C))
-          (set! ans (cons (list (myvy-mangle-new C) (eval (myvy-mangle-new C))) ans)))
-        ans]
+        (list
+         (list (myvy-mangle-old C) (eval (myvy-mangle-old C)))
+         (list (myvy-mangle-new C) (eval (myvy-mangle-new C))))]
        [_ null]))))
 
 (define (myvy-enumerate-the-model-two-state #:only [the-thing null])
@@ -797,7 +793,7 @@
   (pretty-print diag)
   (newline)
 
-  (unless (myvy-one-state-implies decls (list diag)
+  #;(unless (myvy-one-state-implies decls (list diag)
             `(not ,(myvy-get-invariants-as-formula decls)))
     (parameterize ([z3-log? true])
       (displayln "parent stack")
@@ -830,7 +826,9 @@
                (set! inductive-frame
                      (myvy-updr-simplify-frame decls (cons conj inductive-frame)))
                (printf "discovered new inductive invariant\n")
-               (pretty-print inductive-frame))
+               (pretty-print inductive-frame)
+               (for ([i inductive-frame])
+                 (set! fs (myvy-updr-conjoin-frames-up-through decls (length fs) fs i))))
 
              (list 'blocked (myvy-updr-conjoin-frames-up-through decls j fs conj))))]
         [(list 'sat diag2 model2 enum2 #;transition-name)
