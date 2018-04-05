@@ -704,9 +704,6 @@
           ['unsat #t])
       (solver-pop)))
 
-(define (myvy-simplify-negated-diagram decls f phi)
-  phi)
-
 (define (myvy-updr-conjoin-frames-up-through decls j fs phi)
   (define (go fs)
     (match fs
@@ -716,7 +713,7 @@
          [(list i fs)
           (list (+ i 1)
                 (if (and (<= i j) (not (myvy-one-state-implies decls f phi)))
-                    (cons (cons (myvy-simplify-negated-diagram decls f phi) f) fs)
+                    (cons (cons phi f) fs)
                     (cons f fs)))])]))
 
   (match (go fs)
@@ -786,6 +783,42 @@
 (define (get-frame j fs)
   (list-ref fs (- (length fs) j 1)))
 
+(define (myvy-get-inits decls)
+  (stream-map
+   labeled-formula-formula
+   (inits-as-labeled-formulas decls)))
+
+(define (myvy-minimize-conj-relative-inductive decls frame expr)
+  (match-define `(forall ,bvs (or ,disjs ...)) expr)
+
+  ; (printf "minimizing unsat core for relative inductiveness!\n")
+  ; (pretty-print expr)
+  ; (pretty-print bvs)
+  ; (pretty-print disjs)
+
+  (unless (and (myvy-one-state-implies decls (myvy-get-inits decls) expr)
+               (myvy-updr-relative-inductive decls frame expr))
+    (printf "xxx: not starting with relative-inductive conjecture!\n"))
+
+  (define (build disjs)
+    `(forall ,bvs ,(solver-or* disjs)))
+
+  (define (go head tail)
+    (match tail
+      ['() (reverse head)]
+      [(cons t tail)
+       (define e (build (append head tail)))
+       (if (and (myvy-one-state-implies decls (myvy-get-inits decls) e)
+                (myvy-updr-relative-inductive decls frame e))
+           (go head tail)
+           (go (cons t head) tail))]))
+
+  (define ans (build (go '() disjs)))
+  (when (not (equal? ans expr))
+    (printf "minimized conjecture!\n"))
+    (pretty-print ans)
+  ans)
+
 (define inductive-frame null)
 
 (define (myvy-updr-block-diagram decls bad fs diag model enum j)
@@ -821,14 +854,28 @@
                   #;(match (read)
                     ['yes (read)]
                     ['no conj])])
-             (when (and (myvy-updr-relative-inductive decls inductive-frame conj)
+             (when (not (myvy-updr-relative-inductive decls (get-frame (- j 1) fs) conj))
+               (printf "ZZZ: unsat core is not relative inductive\n"))
+
+             (set! conj (myvy-minimize-conj-relative-inductive decls (get-frame (- j 1) fs) conj))
+
+             (when (and (myvy-one-state-implies decls (myvy-get-inits decls) conj)
+                        (myvy-updr-relative-inductive decls inductive-frame conj)
                         (not (myvy-one-state-implies decls inductive-frame conj)))
                (set! inductive-frame
                      (myvy-updr-simplify-frame decls (cons conj inductive-frame)))
                (printf "discovered new inductive invariant\n")
                (pretty-print inductive-frame)
                (for ([i inductive-frame])
-                 (set! fs (myvy-updr-conjoin-frames-up-through decls (length fs) fs i))))
+                 (set! fs (myvy-updr-conjoin-frames-up-through decls (length fs) fs i)))
+               (when (and (myvy-one-state-implies decls (myvy-get-inits decls)
+                                                  (solver-and* inductive-frame))
+                          (myvy-updr-relative-inductive decls inductive-frame
+                                                        (solver-and* inductive-frame))
+                          (myvy-one-state-implies decls inductive-frame
+                                                  (solver-not bad)))
+                 (printf "WOW! inductive frame already inductive!!!\n")))
+
 
              (list 'blocked (myvy-updr-conjoin-frames-up-through decls j fs conj))))]
         [(list 'sat diag2 model2 enum2 #;transition-name)
@@ -841,7 +888,8 @@
             (list 'no-universal-invariant fs (cons diag diags))]
            [res res])])))
 
-(define (myvy-updr-simplify-frame decls f)
+
+#;(define (myvy-updr-simplify-frame decls f)
   (match f
     ['() '()]
     [(cons c f)
@@ -849,17 +897,34 @@
            (filter (λ (c2) (not (myvy-one-state-implies decls (list c) c2)))
                    (myvy-updr-simplify-frame decls f)))]))
 
-(define (myvy-updr-simplify-frames2 decls fs)
+#;(define (myvy-updr-simplify-frames2 decls fs)
   (printf "simplifying frames...\n")
 
   (for/list ([f fs])
     (myvy-updr-simplify-frame decls f)))
 
-(define (myvy-updr-simplify-frames decls fs)
+#;(define (myvy-updr-simplify-frames decls fs)
   (map reverse
        (myvy-updr-simplify-frames2
         decls
         (map reverse (myvy-updr-simplify-frames2 decls fs)))))
+
+(define (myvy-updr-simplify-frame decls f)
+  (printf "simplifying frame\n")
+  (solver-push)
+  (myvy-declare-mutable-signature decls)
+  (begin0
+      (myvy-simplify-all-in-context '() f)
+    (solver-pop)))
+
+(define (myvy-updr-simplify-frames decls fs)
+  (printf "simplifying frames\n")
+  (solver-push)
+  (myvy-declare-mutable-signature decls)
+  (begin0
+      (for/list ([f fs])
+        (myvy-simplify-all-in-context '() f))
+    (solver-pop)))
 
 (define (check-frame-implies decls hyps goals)
   (solver-push)
@@ -962,6 +1027,7 @@
     (set! fs (myvy-updr-simplify-frames decls fs))
 
     (printf "outer updr loop considering frame ~a\n" (- (length fs) 1))
+    (pretty-print inductive-frame)
     (pretty-print fs)
     (newline)
 
@@ -979,8 +1045,8 @@
        (printf "frontier is not safe, blocking minimal model\n")
        (let* ([model (myvy-get-minimal-model decls)]
               [diag (myvy-diagram decls model)])
-         (pretty-print diag)
-         (newline)
+         #;(pretty-print diag)
+         #;(newline)
          (solver-pop 2)
          (match (myvy-updr-block-diagram decls bad fs diag model
                   (myvy-enumerate-model-one-state decls (λ (x) x) model)
@@ -1041,3 +1107,84 @@
     (solver-pop)
   (solver-pop))
       
+(define (solver-query e)
+  (solver-push)
+    (solver-assert (solver-not e))
+    (begin0
+        (match (solver-check-sat)
+          ['sat #f]
+          ['unsat #;(pretty-print (solver-get-stack)) #t])
+      (solver-pop)))
+
+(define (myvy-with-hyps hyps f)
+  (solver-push)
+  (for ([hyp hyps])
+    (solver-assert hyp))
+  (begin0
+      (f)
+    (solver-pop)))
+
+(define (myvy-simplify-in-context hyps goal)
+  (define (must-be-true e) (solver-query e))
+  (define (must-be-false e) (solver-query (solver-not e)))
+
+  (define (declare bvs)
+    (for ([bv bvs])
+      (match bv
+        [(list x sort)
+         (solver-declare-const x sort)])))
+
+  (define (go-list exprs [f (λ (x) x)])
+    (match exprs
+      ['() '()]
+      [(cons expr exprs)
+       (let ([expr (go expr)])
+         (solver-push)
+         (solver-assert (f expr))
+         (begin0
+             (cons expr (go-list exprs f))
+           (solver-pop)))]))
+
+  (define (reorder-nots l)
+    (let-values ([(neg pos) (partition (match-lambda [`(not ,_) #t] [_ #f]) l)])
+      (append neg pos)))
+
+  (define (go goal)
+    (cond
+      [(must-be-true goal) 'true]
+      [(must-be-false goal) 'false]
+      [else (match goal
+              [`(forall ,bvs ,body)
+               (solver-push)
+               (declare bvs)
+               (begin0
+                   `(forall ,bvs ,(go body))
+                 (solver-pop))]
+              [`(exists ,bvs ,body)
+               (solver-push)
+               (declare bvs)
+               (begin0
+                   `(exists ,bvs ,(go body))
+                 (solver-pop))]
+              [`(and ,conjs ...)
+               (solver-and* (go-list conjs))]
+              [`(or ,conjs ...)
+               (solver-or* (go-list (reorder-nots conjs) solver-not))]
+              [`(=> ,P ,Q)
+               (go `(or (not ,P) ,Q))]
+              [_ goal])]))
+
+  (myvy-with-hyps hyps (λ () (go goal))))
+
+(define (myvy-simplify-all-in-context hyps goals)
+  (define (go head tail)
+    (match tail
+      ['() (reverse (filter (λ (x) (not (equal? 'true x))) head))]
+      [(cons e tail)
+       (go (cons (myvy-simplify-in-context (append head tail) e) head) tail)]))
+
+  (myvy-with-hyps hyps
+   (λ () (go '() goals))))
+
+
+
