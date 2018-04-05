@@ -290,9 +290,11 @@
          (let ([bounds (map (λ (s) (list (gensym) s)) sorts)])
            (list (solver-label
                   #:label (symbol-append 'frame- nonce '- name)
-                  `(forall ,bounds
-                           (= (,(mangle-old name) ,@(map car bounds))
-                              (,(mangle-new name) ,@(map car bounds)))))))]
+                  (if (null? bounds)
+                      `(= ,(mangle-old name) ,(mangle-new name))
+                      `(forall ,bounds
+                         (= (,(mangle-old name) ,@(map car bounds))
+                            (,(mangle-new name) ,@(map car bounds))))))))]
         [(mutconst-decl name sort) #:when (not (member name mods))
          (list (solver-label #:label (symbol-append 'frame- nonce '- name)
                              `(= ,(mangle-old name) ,(mangle-new name))))]
@@ -312,11 +314,15 @@
   (solver-assert (myvy-desugar-transition-relation decls mangle-old mangle-new name formula)))
 
 (define (enumerate-relation eval model elt-map #:mangle [mangle (λ (x) x)] R sorts)
-  (for/list ([tuple (apply cartesian-product (map (λ (s) (hash-ref elt-map s)) sorts))])
-    (list (cons R tuple)
-          (if (defined-in-model model (mangle R))
-              (eval (cons (mangle R) tuple))
-              #f))))
+  (if (null? sorts)
+      (list R (if (defined-in-model model (mangle R))
+                  (eval (mangle R))
+                  #f))
+      (for/list ([tuple (apply cartesian-product (map (λ (s) (hash-ref elt-map s)) sorts))])
+        (list (cons R tuple)
+              (if (defined-in-model model (mangle R))
+                  (eval (cons (mangle R) tuple))
+                  #f)))))
 
 (define/match (myvy-expr-to-racket expr)
   [(`(ite ,args ...)) `(if ,@(map myvy-expr-to-racket args))]
@@ -493,7 +499,9 @@
      (for/list ([sym-enum enum])
        (match sym-enum
          [`(,(? symbol? atom) ,value)
-          (list `(= ,atom ,(rename value)))]
+          (if (boolean? value)
+              (list (if value atom (solver-not atom)))
+              (list `(= ,atom ,(rename value))))]
          [_
           (for/list ([clause sym-enum])
             (match clause
