@@ -62,18 +62,18 @@
    (mutable-constant voting-quorum quorum)
 
    (transition become-leader
-    (modifies (voting-quorum leader)
-              (exists ((n node))
-                      (and (forall ((N node)) (=> (member N voting-quorum) (old (votes n N))))
-                           (forall ((N node)) (= (leader N) (or (old (leader N))
-                                                                (= N n))))))))
+     (modifies (voting-quorum leader)
+       (exists ((n node))
+         (and (forall ((N node)) (=> (member N voting-quorum) (old (votes n N))))
+              (forall ((N node)) (= (leader N) (or (old (leader N))
+                                                   (= N n))))))))
    (transition send-request-vote
-    (modifies (request-vote-msg)
-              (exists ((n node))
-                      (forall ((N1 node) (N2 node))
-                              (= (request-vote-msg N1 N2)
-                                 (or (old (request-vote-msg N1 N2))
-                                     (= N1 n)))))))
+     (modifies (request-vote-msg)
+       (exists ((n node))
+         (forall ((N1 node) (N2 node))
+           (= (request-vote-msg N1 N2)
+              (or (old (request-vote-msg N1 N2))
+                  (= N1 n)))))))
 
    (transition receive-request-vote
      (modifies (voted vote-msg)
@@ -111,11 +111,11 @@
              (= C1 C2))))
 
    (invariant leader-has-quorum
-       (forall ((L node))
-         (=> (leader L)
-             (forall ((V node))
-               (=> (member V voting-quorum)
-                   (votes L V))))))
+     (forall ((L node))
+       (=> (leader L)
+           (forall ((V node))
+             (=> (member V voting-quorum)
+                 (votes L V))))))
 
    (invariant votes-were-received
        (forall ((C node) (V node))
