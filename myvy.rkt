@@ -248,32 +248,37 @@
             #t]
       [res #f]))
   (solver-push)
+  (define card-map (make-hash))
   (for ([sort (stream-map type-decl-name (sort-stream decls))])
     (define n (length (model-get-elements-of-sort model sort)))
-    ; (printf "~a ~a\n" sort n)
+    (printf "~a ~a\n" sort n)
     (when (= n 1)
       ; (printf "asserted ~a ~a on cardinality frame\n" sort 1)
-      (myvy-assert-cardinality sort 1))
+      (myvy-assert-cardinality sort 1)
+      (hash-set! card-map sort 1))
     (do ([k (- n 1) (- k 1)]
          [done? #f])
         ((or done? (= k 0)))
       (solver-push)
       (myvy-assert-cardinality sort k)
+      (printf "~a ~a\n" sort k)
       (set! done? (not (update-model)))
       (solver-pop)
       ; add last known satisfiable cardinality constraint
       (cond
         [done?
          ; (printf "asserted ~a ~a on cardinality frame\n" sort (+ k 1))
-         (myvy-assert-cardinality sort (+ k 1))]
+         (myvy-assert-cardinality sort (+ k 1))
+         (hash-set! card-map sort (+ k 1))]
         [(= k 1)
          ; (printf "asserted ~a ~a on cardinality frame\n" sort k)
-         (myvy-assert-cardinality sort k)]
+         (myvy-assert-cardinality sort k)
+         (hash-set! card-map sort k)]
         [else (void)])))
 
   ; call check-sat one more time just to make the model available in the context
   (match (solver-check-sat)
-    ['sat (solver-get-model)]))
+    ['sat (list (solver-get-model) card-map)]))
 
 ; checks all the labeled formulas in decls.
 ; if all checks pass, then #f is returned and the solver context is left unchanged.
@@ -296,7 +301,7 @@
        (match (solver-check-sat)
          ['sat
           (printf "failed\n")
-          (define model (myvy-get-minimal-model decls))
+          (define model (first (myvy-get-minimal-model decls)))
 
           model]
          ['unsat (printf "ok!\n") (solver-pop) #f])]
@@ -683,7 +688,7 @@
                  (myvy-mangle-formula-one-state decls (myvy-mangle-i n) goal))
   (match (solver-check-sat)
     ['unsat (solver-pop) 'unsat]
-    ['sat (myvy-get-minimal-model decls)]))
+    ['sat (first (myvy-get-minimal-model decls))]))
 
 (define (myvy-bmc decls n goal)
   (myvy-init decls)
@@ -742,7 +747,7 @@
       ['unsat (begin0
                   (list 'unsat (list (list (solver-get-stack) (solver-get-unsat-core))))
                 (solver-pop))]
-      ['sat (define model (myvy-get-minimal-model decls))
+      ['sat (define model (first (myvy-get-minimal-model decls)))
             (begin0
                 (list 'sat
                       (myvy-diagram decls model myvy-mangle-old)
@@ -1020,7 +1025,7 @@
   (begin0
       (myvy-simplify-all-in-context '() f)
     (solver-pop)
-    (printf "done simplifying")))
+    (printf "done simplifying\n")))
 
 (define (myvy-updr-simplify-frames decls fs)
   (printf "simplifying frames\n")
@@ -1030,7 +1035,7 @@
       (for/list ([f fs])
         (myvy-simplify-all-in-context '() f))
     (solver-pop)
-    (printf "done simplifying")))
+    (printf "done simplifying\n")))
 
 (define (check-frame-implies decls hyps goals)
   (solver-push)
@@ -1137,8 +1142,6 @@
     (pretty-print fs)
     (newline)
 
-    (printf "(solver stack height is ~a)\n" (length (solver-get-stack)))
-
     (match (myvy-updr-check-frontier decls bad fs)
       ['unsat
        (printf "frontier is safe.\n")
@@ -1154,7 +1157,7 @@
            (go fs))]
       ['sat
        (printf "frontier is not safe, blocking minimal model\n")
-       (let* ([model (myvy-get-minimal-model decls)]
+       (let* ([model (first (myvy-get-minimal-model decls))]
               [diag (myvy-diagram decls model)])
          #;(pretty-print diag)
          #;(newline)
