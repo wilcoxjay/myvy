@@ -387,7 +387,8 @@
 
 
 (define (myvy-assert-transition-relation decls mangle-old mangle-new name formula)
-  (solver-assert (myvy-desugar-transition-relation decls mangle-old mangle-new name formula)))
+  (solver-assert-skolemize #:label name
+   (myvy-desugar-transition-relation decls mangle-old mangle-new name formula)))
 
 (define (enumerate-relation eval model elt-map #:mangle [mangle (λ (x) x)] R sorts)
   (if (null? sorts)
@@ -669,7 +670,7 @@
   (for ([lbl lbls])
     (solver-declare-const lbl 'Bool)))
 
-(define (myvy-bmc-no-init decls n goal)
+(define (myvy-assert-bmc decls n)
   (solver-push)
   (myvy-declare-mutable-signature-mangle decls (myvy-mangle-i 0))
   (myvy-assert-inits decls (myvy-mangle-i 0))
@@ -682,8 +683,10 @@
     (myvy-declare-labels (solver-labels-of-labeled-or t))
     (solver-assert
      #:label (symbol-append 'bmc-transition- (number->symbol i))
-     t))
+     t)))
 
+(define (myvy-bmc-no-init decls n goal)
+  (myvy-assert-bmc decls n)
   (solver-assert #:label 'bmc-goal
                  (myvy-mangle-formula-one-state decls (myvy-mangle-i n) goal))
   (match (solver-check-sat)
@@ -898,35 +901,37 @@
    (inits-as-labeled-formulas decls)))
 
 (define (myvy-minimize-conj-relative-inductive decls frame expr)
-  (match-define `(forall ,bvs (or ,disjs ...)) expr)
-
-  ; (printf "minimizing unsat core for relative inductiveness!\n")
-  ; (pretty-print expr)
-  ; (pretty-print bvs)
-  ; (pretty-print disjs)
-
-  (unless (and (myvy-one-state-implies decls (myvy-get-inits decls) expr)
-               (myvy-updr-relative-inductive decls frame expr))
-    (printf "xxx: not starting with relative-inductive conjecture!\n"))
-
-  (define (build disjs)
-    `(forall ,bvs ,(solver-or* disjs)))
-
-  (define (go head tail)
-    (match tail
-      ['() (reverse head)]
-      [(cons t tail)
-       (define e (build (append head tail)))
-       (if (and (myvy-one-state-implies decls (myvy-get-inits decls) e)
-                (myvy-updr-relative-inductive decls frame e))
-           (go head tail)
-           (go (cons t head) tail))]))
-
-  (define ans (build (go '() disjs)))
-  (when (not (equal? ans expr))
-    (printf "minimized conjecture!\n"))
-    (pretty-print ans)
-  ans)
+  (match expr
+    [`(forall ,bvs (or ,disjs ...))
+    
+      ; (printf "minimizing unsat core for relative inductiveness!\n")
+      ; (pretty-print expr)
+      ; (pretty-print bvs)
+      ; (pretty-print disjs)
+    
+      (unless (and (myvy-one-state-implies decls (myvy-get-inits decls) expr)
+                   (myvy-updr-relative-inductive decls frame expr))
+        (printf "xxx: not starting with relative-inductive conjecture!\n"))
+    
+      (define (build disjs)
+        `(forall ,bvs ,(solver-or* disjs)))
+    
+      (define (go head tail)
+        (match tail
+          ['() (reverse head)]
+          [(cons t tail)
+           (define e (build (append head tail)))
+           (if (and (myvy-one-state-implies decls (myvy-get-inits decls) e)
+                    (myvy-updr-relative-inductive decls frame e))
+               (go head tail)
+               (go (cons t head) tail))]))
+    
+      (define ans (build (go '() disjs)))
+      (when (not (equal? ans expr))
+        (printf "minimized conjecture!\n"))
+        (pretty-print ans)
+      ans]
+    [_ expr]))
 
 (define inductive-frame (void))
 
@@ -1095,7 +1100,10 @@
          (cons (set-union f (myvy-updr-push-forward decls (first fs))) fs))]))
 
   (printf "pushing forward lemmas...\n")
-  (go fs))
+  (pretty-print fs)
+  (define fs2 (go fs))
+  (pretty-print fs2)
+  fs2)
 
 (define (myvy-get-safety-property-as-formula decls)
   (solver-and*
@@ -1153,7 +1161,9 @@
                           #:when (check-frame-implies decls next prev))
                    prev))
        (if I
-           (list 'valid I)
+           (begin
+             (pretty-print fs)
+             (list 'valid I))
            (go fs))]
       ['sat
        (printf "frontier is not safe, blocking minimal model\n")
