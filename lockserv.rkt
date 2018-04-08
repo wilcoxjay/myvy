@@ -129,3 +129,6 @@
 
 #;(myvy-verify lockserv)
 
+; Typically takes about 45 seconds.
+#;(myvy-updr lockserv)
+

@@ -38,42 +38,74 @@
     [(corollary-decl name _) name]))
 
 
-(define-syntax-rule (type t) (type-decl 't))
-(define-syntax-rule (immutable-relation R (args ...)) (immrel-decl 'R '(args ...)))
-(define-syntax-rule (mutable-relation R (args ...)) (mutrel-decl 'R '(args ...)))
-(define-syntax-rule (immutable-constant C t) (immconst-decl 'C 't))
-(define-syntax-rule (mutable-constant C t) (mutconst-decl 'C 't))
+(define-syntax-rule (type t) (type-decl `t))
+(define-syntax-rule (immutable-relation R (args ...)) (immrel-decl `R `(args ...)))
+(define-syntax-rule (mutable-relation R (args ...)) (mutrel-decl `R `(args ...)))
+(define-syntax-rule (immutable-constant C t) (immconst-decl `C `t))
+(define-syntax-rule (mutable-constant C t) (mutconst-decl `C `t))
 (define-syntax-rule (immutable-function F (args ...) t)
   (begin
-    (when (null? '(args ...))
+    (when (null? `(args ...))
       (error "functions must take at least one argument; consider using a constant instead"))
-    (immfun-decl 'F '(args ...)'t)))
+    (immfun-decl `F `(args ...)`t)))
 (define-syntax-rule (mutable-function F (args ...) t)
   (begin
-    (when (null? '(args ...))
+    (when (null? `(args ...))
       (error "functions must take at least one argument; consider using a constant instead"))
-    (mutfun-decl 'F '(args ...) 't)))
+    (mutfun-decl `F `(args ...) `t)))
 
 (define-syntax axiom
   (syntax-rules ()
-    [(axiom f) (axiom-decl (symbol-append 'anonymous- (gensym)) 'f)]
-    [(axiom name f) (axiom-decl 'name 'f)]))
+    [(axiom f) (axiom-decl (symbol-append 'anonymous- (gensym)) `f)]
+    [(axiom name f) (axiom-decl `name `f)]))
 (define-syntax init
   (syntax-rules ()
-    [(init f) (init-decl (symbol-append 'anonymous- (gensym)) 'f)]
-    [(init name f) (init-decl 'name 'f)]))
+    [(init f) (init-decl (symbol-append 'anonymous- (gensym)) `f)]
+    [(init name f) (init-decl `name `f)]))
 (define-syntax transition
   (syntax-rules ()
-    [(transition f) (transition-decl (symbol-append 'anonymous- (gensym)) 'f)]
-    [(transition name f) (transition-decl 'name 'f)]))
+    [(transition f) (transition-decl (symbol-append 'anonymous- (gensym)) `f)]
+    [(transition name f) (transition-decl `name `f)]))
 (define-syntax invariant
   (syntax-rules ()
-    [(invariant f) (invariant-decl (symbol-append 'anonymous- (gensym)) 'f)]
-    [(invariant name f) (invariant-decl 'name 'f)]))
+    [(invariant f) (invariant-decl (symbol-append 'anonymous- (gensym)) `f)]
+    [(invariant name f) (invariant-decl `name `f)]))
 (define-syntax corollary
   (syntax-rules ()
-    [(corollary f) (corollary-decl (symbol-append 'anonymous- (gensym)) 'f)]
-    [(corollary name f) (corollary-decl 'name 'f)]))
+    [(corollary f) (corollary-decl (symbol-append 'anonymous- (gensym)) `f)]
+    [(corollary name f) (corollary-decl `name `f)]))
+
+(define (total-order sort)
+  (define R (symbol-append sort '-le))
+  (define zero (symbol-append sort '-zero))
+  (list
+   (immutable-relation ,R (,sort ,sort))
+   (immutable-constant ,zero ,sort)
+
+   (axiom ,(symbol-append R '-refl)
+     (forall ((X ,sort))
+       (,R X X)))
+
+   (axiom ,(symbol-append R '-antisym)
+     (forall ((X1 ,sort) (X2 ,sort))
+       (=> (and (,R X1 X2)
+                (,R X2 X1))
+           (= X1 X2))))
+
+   (axiom ,(symbol-append R '-total)
+     (forall ((X1 ,sort) (X2 ,sort))
+       (or (,R X1 X2)
+           (,R X2 X1))))
+
+   (axiom ,(symbol-append R '-trans)
+     (forall ((X1 ,sort) (X2 ,sort) (X3 ,sort))
+       (=> (and (,R X1 X2)
+                (,R X2 X3))
+           (,R X1 X3))))
+
+   (axiom ,(symbol-append R '-le-zero)
+      (forall ((X ,sort))
+        (,R ,zero X)))))
 
 (define (decl-stream decls [pred (λ (x) #t)])
   (for/stream ([decl decls]

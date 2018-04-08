@@ -169,7 +169,8 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ; Infer invariant (ignoring invariant declarations and starting from corollaries)
-; Currently does not work.
+; On this file, typically takes between 4 and 6 minutes to find an invariant.
+; See the lockserv for a simpler system where it works faster.
 #; (myvy-updr leader-election)
 
 
