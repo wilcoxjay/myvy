@@ -718,14 +718,18 @@
       ['unsat (solver-pop) 'unsat]
       [x x]))
 
-(define (myvy-updr-analyze-counterexample decls bad fs diag)
+(define (myvy-updr-analyze-counterexample decls #:may [may false] bad fs diag)
   (printf "abstract counterexample found!\n")
-  (pretty-print fs)
-  (newline)
-  (printf "trying bmc with ~a steps...\n" (- (length fs) 1))
-  (match (myvy-bmc-no-init decls (- (length fs) 1) bad)
-    ['unsat (list 'no-universal-invariant fs (list diag))]
-    [model (solver-pop 2) (list 'invalid model)]))
+  (unless may
+    (pretty-print fs)
+    (newline))
+  (if may
+      (list 'no-universal-invariant fs (list diag))
+      (begin
+        (printf "trying bmc with ~a steps...\n" (- (length fs) 1))
+        (match (myvy-bmc-no-init decls (- (length fs) 1) bad)
+          ['unsat (list 'no-universal-invariant fs (list diag))]
+          [model (solver-pop 2) (list 'invalid model)]))))
 
 (define (myvy-updr-check-predecessor decls pre diag)
   (solver-push)
@@ -935,24 +939,14 @@
 
 (define inductive-frame (void))
 
-(define (myvy-updr-block-diagram decls bad fs diag model enum j)
+(define (myvy-updr-block-diagram decls #:may [may false] bad fs diag j)
   (printf "updr blocking diagram in frame ~a\n" j)
+  (when may (printf "note: may\n"))
   (pretty-print diag)
   (newline)
 
-  #;(unless (myvy-one-state-implies decls (list diag)
-            `(not ,(myvy-get-invariants-as-formula decls)))
-    (parameterize ([z3-log? true])
-      (displayln "parent stack")
-      (pretty-print (solver-get-stack))
-      (myvy-one-state-implies decls (list diag)
-            `(not ,(myvy-get-invariants-as-formula decls))))
-    (pretty-print model)
-    (pretty-print enum)
-    (error "diagram does not violate inductive invariant"))
-
   (if (= j 0)
-      (myvy-updr-analyze-counterexample decls bad fs diag)
+      (myvy-updr-analyze-counterexample decls #:may may bad fs diag)
       (match (myvy-updr-check-predecessor
               decls
               (myvy-updr-frame-to-formula (get-frame (- j 1) fs))
@@ -961,43 +955,37 @@
          (printf "diagram has no predecessor, computing unsat core to block\n")
          (let ([conj (solver-not (myvy-updr-minimize-diag-with-unsat-core decls log diag))])
            (pretty-print conj)
-           ;(newline)
-           ;(printf "would you like to enter a inductive strengethening?\n")
-           (let ([conj
-                  conj
-                  #;(match (read)
-                    ['yes (read)]
-                    ['no conj])])
-             (when (not (myvy-updr-relative-inductive decls (get-frame (- j 1) fs) conj))
-               (printf "ZZZ: unsat core is not relative inductive\n"))
 
-             (set! conj (myvy-minimize-conj-relative-inductive decls (get-frame (- j 1) fs) conj))
+           (when (not (myvy-updr-relative-inductive decls (get-frame (- j 1) fs) conj))
+             (printf "ZZZ: unsat core is not relative inductive\n"))
 
-             (when (and (myvy-one-state-implies decls (myvy-get-inits decls) conj)
-                        (myvy-updr-relative-inductive decls inductive-frame conj)
-                        (not (myvy-one-state-implies decls inductive-frame conj)))
-               (set! inductive-frame
-                     (myvy-updr-simplify-frame decls (cons conj inductive-frame)))
-               (printf "discovered new inductive invariant\n")
-               (pretty-print inductive-frame)
-               (for ([i inductive-frame])
-                 (set! fs (myvy-updr-conjoin-frames-up-through decls (length fs) fs i)))
-               (when (and (myvy-one-state-implies decls (myvy-get-inits decls)
-                                                  (solver-and* inductive-frame))
-                          (myvy-updr-relative-inductive decls inductive-frame
-                                                        (solver-and* inductive-frame))
-                          (myvy-one-state-implies decls inductive-frame
-                                                  (solver-not bad)))
-                 (printf "WOW! inductive frame already inductive!!!\n")))
+           (set! conj (myvy-minimize-conj-relative-inductive decls (get-frame (- j 1) fs) conj))
+
+           #;(when (and (myvy-one-state-implies decls (myvy-get-inits decls) conj)
+                      (myvy-updr-relative-inductive decls inductive-frame conj)
+                      (not (myvy-one-state-implies decls inductive-frame conj)))
+             (set! inductive-frame
+                   (myvy-updr-simplify-frame decls (cons conj inductive-frame)))
+             (printf "discovered new inductive invariant\n")
+             (pretty-print inductive-frame)
+             (for ([i inductive-frame])
+               (set! fs (myvy-updr-conjoin-frames-up-through decls (length fs) fs i)))
+             (when (and (not may)
+                        (myvy-one-state-implies decls (myvy-get-inits decls)
+                                                (solver-and* inductive-frame))
+                        (myvy-updr-relative-inductive decls inductive-frame
+                                                      (solver-and* inductive-frame))
+                        (myvy-one-state-implies decls inductive-frame
+                                                (solver-not bad)))
+               (printf "WOW! inductive frame already inductive!!!\n")))
 
 
-             (list 'blocked (myvy-updr-conjoin-frames-up-through decls j fs conj))))]
+           (list 'blocked (myvy-updr-conjoin-frames-up-through decls j fs conj)))]
         [(list 'sat diag2 model2 enum2 #;transition-name)
-         #;(printf "diagram has predecessor via ~a\n" transition-name)
          (printf "diagram has predecessor\n")
          (printf "recursively blocking predecessor\n")
-         (match (myvy-updr-block-diagram decls bad fs diag2 model2 enum2 (- j 1))
-           [(list 'blocked fs) (myvy-updr-block-diagram decls bad fs diag model enum j)]
+         (match (myvy-updr-block-diagram decls #:may may bad fs diag2 (- j 1))
+           [(list 'blocked fs) (myvy-updr-block-diagram decls #:may may bad fs diag j)]
            [(list 'no-universal-invariant fs diags)
             (list 'no-universal-invariant fs (cons diag diags))]
            [res res])])))
@@ -1087,26 +1075,56 @@
                 (solver-pop))]))
       (solver-pop)))
 
+(define (expr-intern expr)
+  (define (go env expr)
+    (match expr
+      [`(forall ,bvs ,expr)
+       `(forall ,(map second bvs) ,(go (append (map first bvs) env) expr))]
+      [`(exists ,bvs ,expr)
+       `(exists ,(map second bvs) ,(go (append (map first bvs) env) expr))]
+
+      [(? list? l) (map (λ (x) (go env x)) l)]
+      [(? symbol? sym)
+       (match (index-of env sym)
+         [#f sym]
+         [(? number? n) `(var ,n)])]))
+
+  (go '() expr))
 
 (define (myvy-updr-push-forward decls f)
-  (for/list ([conj f]
-             #:when (myvy-updr-relative-inductive decls f conj))
-    conj))
+  (partition (λ (conj) (myvy-updr-relative-inductive decls f conj)) f))
 
-(define (myvy-updr-push-forward-all decls fs)
+(define (myvy-updr-push-forward-all decls cache fs)
   (define (go fs)
     (match fs
       ['() '()]
       [(list f) (list f)]
       [(cons f fs)
-       (let ([fs (go fs)])
-         (cons (set-union f (myvy-updr-push-forward decls (first fs))) fs))]))
+       (let*-values ([(fs) (go fs)]
+                     [(success failure) (myvy-updr-push-forward decls (first fs))])
+
+         (printf "failed to push in frame ~a\n" (length fs))
+         (pretty-print failure)
+         (for/fold ([fs (cons (set-union f success) fs)])
+                   ([e failure])
+           (printf "trying to maybe-block failed expression\n")
+           (pretty-print e)
+           (let* ([n (- (length fs) 1)]
+                  [e-interned (expr-intern e)]
+                  #;[k (cons n e-interned)]
+                  )
+             (if (set-member? cache e-interned)
+                 (begin
+                   (printf "seen this one before, skipping!\n")
+                   fs)
+                 (match (myvy-updr-block-diagram decls #:may true null fs (solver-not e) n)
+                   [(list 'no-universal-invariant fs2 diags)
+                    (set-add! cache e-interned)
+                    fs]
+                   [(list 'blocked fs) fs])))))]))
 
   (printf "pushing forward lemmas...\n")
-  (pretty-print fs)
-  (define fs2 (go fs))
-  (pretty-print fs2)
-  fs2)
+  (go fs))
 
 (define (myvy-get-safety-property-as-formula decls)
   (solver-and*
@@ -1137,7 +1155,10 @@
 
   (define bad (solver-not safety))
 
-  (define fs (myvy-updr-push-forward-all decls (list (list 'true) (stream->list inits))))
+  (define push-cache (mutable-set))
+
+  (define fs (myvy-updr-push-forward-all decls push-cache
+                                         (list (list 'true) (stream->list inits))))
 
   (printf "initializing updr with inits\n")
   (pretty-print (stream->list inits))
@@ -1145,11 +1166,12 @@
   (printf "initializing updr with bad states\n")
   (pretty-print bad)
 
-  (define (go fs)
-    (set! fs (myvy-updr-simplify-frames decls fs))
+  (define (go simplify? fs)
+    (when simplify?
+      (set! fs (myvy-updr-simplify-frames decls fs)))
 
     (printf "outer updr loop considering frame ~a\n" (- (length fs) 1))
-    (pretty-print inductive-frame)
+    #;(pretty-print inductive-frame)
     (pretty-print fs)
     (newline)
 
@@ -1157,7 +1179,8 @@
       ['unsat
        (printf "frontier is safe.\n")
        (printf "moving to new frame\n")
-       (set! fs (myvy-updr-push-forward-all decls (cons (list 'true) fs)))
+       (set! fs (myvy-updr-simplify-frames decls fs))
+       (set! fs (myvy-updr-push-forward-all decls push-cache (cons (list 'true) fs)))
        (set! fs (myvy-updr-simplify-frames decls fs))
        (define I (for/or ([next fs]
                           [prev (rest fs)]
@@ -1167,7 +1190,7 @@
            (begin
              (pretty-print fs)
              (list 'valid I))
-           (go fs))]
+           (go false fs))]
       ['sat
        (printf "frontier is not safe, blocking minimal model\n")
        (let* ([model (first (myvy-get-minimal-model decls))]
@@ -1175,15 +1198,13 @@
          #;(pretty-print diag)
          #;(newline)
          (solver-pop 2)
-         (match (myvy-updr-block-diagram decls bad fs diag model
-                  (myvy-enumerate-model-one-state decls (λ (x) x) model)
-                  (- (length fs) 1))
+         (match (myvy-updr-block-diagram decls #:may false bad fs diag (- (length fs) 1))
            [(list 'invalid cex)  (list 'invalid cex)]
            [(list 'no-universal-invariant fs diags)
             (list 'no-universal-invariant (reverse fs) (reverse diags))]
-           [(list 'blocked fs) (go fs)]))]))
+           [(list 'blocked fs) (go true fs)]))]))
 
-  (go fs))
+  (go true fs))
 
 (define (myvy-sat-yes-unsat-no msg)
   (printf "checking whether ~a: " msg)
