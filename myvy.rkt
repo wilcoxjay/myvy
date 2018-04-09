@@ -251,7 +251,7 @@
   (define card-map (make-hash))
   (for ([sort (stream-map type-decl-name (sort-stream decls))])
     (define n (length (model-get-elements-of-sort model sort)))
-    (printf "~a ~a\n" sort n)
+    #;(printf "~a ~a\n" sort n)
     (when (= n 1)
       ; (printf "asserted ~a ~a on cardinality frame\n" sort 1)
       (myvy-assert-cardinality sort 1)
@@ -261,7 +261,7 @@
         ((or done? (= k 0)))
       (solver-push)
       (myvy-assert-cardinality sort k)
-      (printf "~a ~a\n" sort k)
+      #;(printf "~a ~a\n" sort k)
       (set! done? (not (update-model)))
       (solver-pop)
       ; add last known satisfiable cardinality constraint
@@ -712,8 +712,8 @@
   (solver-push)
     (printf "checking whether frontier has any bad states: ")
     (myvy-declare-mutable-signature decls)
-    (solver-assert (myvy-updr-frame-to-formula (first fs)))
-    (solver-assert bad)
+    (solver-assert #:label 'frontier-frame (myvy-updr-frame-to-formula (first fs)))
+    (solver-assert #:label 'bad bad)
     (match (solver-check-sat)
       ['unsat (solver-pop) 'unsat]
       [x x]))
@@ -808,8 +808,8 @@
   (solver-push)
     (myvy-declare-mutable-signature decls)
     (for ([hyp hyps])
-      (solver-assert hyp))
-    (solver-assert (solver-not goal))
+      (solver-assert #:label (symbol-append 'one-state-implies-hyp- (gensym)) hyp))
+    (solver-assert #:label 'one-state-implies-goal (solver-not goal))
     (begin0
         (match (solver-check-sat)
           ['sat #f]
@@ -1046,11 +1046,11 @@
   (solver-push)
     (myvy-declare-mutable-signature decls)
     (for ([hyp hyps])
-      (solver-assert hyp))
+      (solver-assert #:label (symbol-append 'check-frame-implies-hyp- (gensym)) hyp))
     (begin0
         (for/and ([goal goals])
           (solver-push)
-          (solver-assert (solver-not goal))
+          (solver-assert #:label 'check-frame-implies-goal (solver-not goal))
           (begin0
               (match (solver-check-sat)
                 ['sat (printf "goal not implied\n")
@@ -1066,10 +1066,13 @@
     (myvy-declare-mutable-signature-mangle decls myvy-mangle-new)
 
     (for ([hyp hyps])
-      (solver-assert (myvy-mangle-formula-one-state decls myvy-mangle-old hyp)))
+      (solver-assert #:label (symbol-append 'relative-inductive-hyp- (gensym))
+        (myvy-mangle-formula-one-state decls myvy-mangle-old hyp)))
 
-    (solver-assert (myvy-mangle-formula-one-state decls myvy-mangle-old expr))
-    (solver-assert (myvy-mangle-formula-one-state decls myvy-mangle-new (solver-not expr)))
+    (solver-assert #:label 'relative-inductive-pre
+      (myvy-mangle-formula-one-state decls myvy-mangle-old expr))
+    (solver-assert #:label 'relative-inductive-post
+      (myvy-mangle-formula-one-state decls myvy-mangle-new (solver-not expr)))
 
     (begin0
         (for/and ([t (transitions-as-labeled-formulas decls)])
@@ -1231,9 +1234,9 @@
     (solver-pop)
   (solver-pop))
       
-(define (solver-query e)
+(define (solver-query #:label [label 'anonymous] e)
   (solver-push)
-    (solver-assert (solver-not e))
+    (solver-assert #:label label (solver-not e))
     (begin0
         (match (solver-check-sat)
           ['sat #f]
@@ -1243,14 +1246,14 @@
 (define (myvy-with-hyps hyps f)
   (solver-push)
   (for ([hyp hyps])
-    (solver-assert hyp))
+    (solver-assert #:label (symbol-append 'with-hyp- (gensym)) hyp))
   (begin0
       (f)
     (solver-pop)))
 
 (define (myvy-simplify-in-context hyps goal)
-  (define (must-be-true e) (solver-query e))
-  (define (must-be-false e) (solver-query (solver-not e)))
+  (define (must-be-true e) (solver-query #:label 'must-be-true e))
+  (define (must-be-false e) (solver-query #:label 'must-be-false (solver-not e)))
 
   (define (declare bvs)
     (for ([bv bvs])
@@ -1264,7 +1267,7 @@
       [(cons expr exprs)
        (let ([expr (go expr)])
          (solver-push)
-         (solver-assert (f expr))
+         (solver-assert #:label (symbol-append 'go-list-hyp- (gensym)) (f expr))
          (begin0
              (cons expr (go-list exprs f))
            (solver-pop)))]))
