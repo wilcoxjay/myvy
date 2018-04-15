@@ -304,7 +304,8 @@
           (define model (first (myvy-get-minimal-model decls)))
 
           model]
-         ['unsat (printf "ok!\n") (solver-pop) #f])]
+         ['unsat (printf "ok!\n") (solver-pop) #f]
+         ['unknown (pretty-print (solver-get-stack)) (error "Unexpected unknown")])]
       [_ #f])))
 
 (define (myvy-check-labeled-formulas mapper decls)
@@ -697,7 +698,8 @@
                  (myvy-mangle-formula-one-state decls (myvy-mangle-i n) goal))
   (match (solver-check-sat)
     ['unsat (solver-pop) 'unsat]
-    ['sat (first (myvy-get-minimal-model decls))]))
+    ['sat (first (myvy-get-minimal-model decls))]
+    ['unknown (pretty-print (solver-get-stack)) (error "Unexpected unknown")]))
 
 (define (myvy-bmc decls n goal)
   (myvy-init decls)
@@ -777,7 +779,8 @@
               ;   ('yes (pretty-print model)))
 
 
-              (solver-pop 2))])
+              (solver-pop 2))]
+      ['unknown (pretty-print (solver-get-stack)) (error "Unexpected unknown")])
 
     #;(define log null)
     #;(begin0
@@ -811,7 +814,8 @@
                         ;   ('yes (pretty-print model)))
 
 
-                        (solver-pop 2))])]))
+                        (solver-pop 2))]
+                ['unknown (pretty-print (solver-get-stack)) (error "Unexpected unknown")])]))
          (list 'unsat log))
       (solver-pop)))
 
@@ -824,7 +828,8 @@
     (begin0
         (match (solver-check-sat)
           ['sat #f]
-          ['unsat #t])
+          ['unsat #t]
+          ['unknown (pretty-print (solver-get-stack)) (error "Unexpected unknown")])
       (solver-pop)))
 
 (define (myvy-updr-conjoin-frames-up-through decls j fs phi)
@@ -1051,7 +1056,8 @@
                 ['sat (printf "goal not implied\n")
                       (pretty-print goal)
                       #f]
-                ['unsat #t])
+                ['unsat #t]
+                ['unknown (pretty-print (solver-get-stack)) (error "Unexpected unknown")])
             (solver-pop)))
       (solver-pop)))
 
@@ -1078,7 +1084,8 @@
               (begin0
                   (match (solver-check-sat)
                     ['sat #f]
-                    ['unsat #t])
+                    ['unsat #t]
+                    ['unknown (pretty-print (solver-get-stack)) (error "Unexpected unknown")])
                 (solver-pop))]))
       (solver-pop)))
 
@@ -1209,7 +1216,8 @@
            [(list 'invalid cex)  (list 'invalid cex)]
            [(list 'no-universal-invariant fs diags)
             (list 'no-universal-invariant (reverse fs) (reverse diags))]
-           [(list 'blocked fs) (go true fs)]))]))
+           [(list 'blocked fs) (go true fs)]))]
+      ['unknown (pretty-print (solver-get-stack)) (error "Unexpected unknown")]))
 
   (go true fs))
 
@@ -1217,7 +1225,8 @@
   (printf "checking whether ~a: " msg)
   (match (solver-check-sat)
     ['sat (displayln "yes")]
-    ['unsat (displayln "no")]))
+    ['unsat (displayln "no")]
+    ['unknown (pretty-print (solver-get-stack)) (error "Unexpected unknown")]))
 
 (define (myvy-updr-check-abstract-cex decls acex)
   (solver-push)
@@ -1268,7 +1277,8 @@
     (begin0
         (match (solver-check-sat)
           ['sat #f]
-          ['unsat #;(pretty-print (solver-get-stack)) #t])
+          ['unsat #;(pretty-print (solver-get-stack)) #t]
+          ['unknown (pretty-print (solver-get-stack)) (error "Unexpected unknown")])
       (solver-pop)))
 
 (define (myvy-with-hyps hyps f)
