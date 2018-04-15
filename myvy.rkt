@@ -654,17 +654,23 @@
 (define (solver-labels-of-labeled-or expr)
   (match expr
     [`(or ,disjuncts ...)
-     (map second disjuncts)]))
+     (map second disjuncts)]
+    [_ (list (second expr))]))
 
-(define (myvy-disjunction-of-all-transition-relations decls nonce mangle-old mangle-new)
+(define (myvy-disjunction-of-all-transition-relations decls nonce mangle-old mangle-new
+                                                      #:include-inits? [include-inits? false])
   (solver-labeled-or* #:nonce nonce
-   (for/list ([decl (transitions-as-labeled-formulas decls)])
-     (match decl
-       [(labeled-formula name f)
-        (myvy-desugar-transition-relation decls mangle-old mangle-new
-                                          (symbol-append name '- (number->symbol nonce))
-                                          f)]))))
-
+   (append
+    (if include-inits?
+        (list (myvy-mangle-formula-one-state decls mangle-new
+                (solver-and* (stream->list (myvy-get-inits decls)))))
+        null)
+    (for/list ([decl (transitions-as-labeled-formulas decls)])
+      (match decl
+        [(labeled-formula name f)
+         (myvy-desugar-transition-relation decls mangle-old mangle-new
+                                           (symbol-append name '- (number->symbol nonce))
+                                           f)])))))
 
 (define (myvy-declare-labels lbls)
   (for ([lbl lbls])
@@ -745,7 +751,8 @@
      (myvy-mangle-formula-one-state decls myvy-mangle-new diag))
   
     (define t (myvy-disjunction-of-all-transition-relations
-               decls 0 myvy-mangle-old myvy-mangle-new))
+               decls 0 myvy-mangle-old myvy-mangle-new
+               #:include-inits? true))
     (myvy-declare-labels (solver-labels-of-labeled-or t))
 
     (solver-assert #:label 'transition t)
