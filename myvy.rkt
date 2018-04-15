@@ -621,8 +621,7 @@
   (set! the-racket-model-z3-model null)
   (set! inductive-frame null)
 
-  (parameterize ([z3 "/Users/jrw12/local/bin/z3"])
-    (solver-init))
+  (solver-init)
   (solver-set-option ':auto-config 'false)
   (solver-set-option ':smt.mbqi 'true)
   (solver-set-option ':interactive-mode 'true)

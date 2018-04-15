@@ -38,10 +38,7 @@
          solver-analyze-alternation-graph
          )
 
-; We assume that the solvers is in the ../bin/ folder.
-(define-runtime-path bin (build-path ".." "bin"))
-
-(define z3 (make-parameter (build-path bin "z3")))
+(define z3 (make-parameter (find-executable-path "z3")))
 
 (define-values (solver-process solver-out solver-in solver-err)
   (values (void) (void) (void) (void)))
